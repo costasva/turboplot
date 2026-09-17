@@ -1,6 +1,8 @@
 """One tab of the plot area: a figure plus the controls that belong to it."""
 from __future__ import annotations
 
+import math
+
 import matplotlib
 matplotlib.use("QtAgg")
 
@@ -18,6 +20,31 @@ from . import db
 from .excel_export import write_plot_workbook
 from .plotmodel import PlotData, Series
 from .state import SessionState
+
+
+def _snap_range(lim, ticks, values) -> tuple[float, float, float | None] | None:
+    """Clip the view limits to the data, then widen out to whole tick marks.
+
+    Zoomed out this gives the data's own range rather than matplotlib's
+    padding; zoomed in it keeps the view the user chose. Snapping to the
+    plot's own tick positions keeps the exported axis labels on the same
+    round numbers as the app, at the cost of at most one tick of extra space.
+    """
+    if not values:
+        return None
+    low, high = max(lim[0], min(values)), min(lim[1], max(values))
+    ticks = np.asarray(ticks, dtype=float)
+    steps = np.diff(ticks)
+    unit = float(steps[0]) if len(steps) else 0.0
+    if not np.isfinite(unit) or unit <= 0:
+        return (low, high, None) if high > low else None
+    base = float(ticks[0])
+    low = base + math.floor((low - base) / unit + 1e-6) * unit
+    high = base + math.ceil((high - base) / unit - 1e-6) * unit
+    # Snapping in floating point leaves trails like 0.05000000000000004,
+    # which Excel would show verbatim in the axis settings.
+    low, high, unit = (round(v, 10) for v in (low, high, unit))
+    return (low, high, unit) if high > low else None
 
 
 class PlotPanel(QWidget):
@@ -159,8 +186,9 @@ class PlotPanel(QWidget):
     def _write(self, path: str) -> str:
         """Both export routes end here; the suffix decides the format."""
         if path.lower().endswith(".xlsx"):
-            write_plot_workbook(path, self.state, self.spec, self.plot_data(),
-                                self.chart_title)
+            data = self.plot_data()
+            write_plot_workbook(path, self.state, self.spec, data,
+                                self.chart_title, self.axis_ranges(data))
         else:
             self.figure.savefig(path, dpi=200)
         return path
@@ -200,6 +228,30 @@ class PlotPanel(QWidget):
                         series.append(Series(src, op, x, y))
         return PlotData(kind=kind, series=series, refs=[],
                         ops=list(self.selected_ops) if kind == "profile" else [])
+
+    def axis_ranges(self, data: PlotData) -> dict[str, tuple[float, float, float | None]]:
+        """The axis ranges the canvas is showing, as (min, max, tick step).
+
+        Excel starts a value axis at zero unless it is told otherwise, which
+        for these quantities squashes every curve into the top of the plot
+        area. The limits are snapped out to the plot's own tick spacing so the
+        exported axis labels stay round numbers.
+        """
+        if data.kind == "scalar":
+            values = [s.value for s in data.series] + [r.value for r in data.refs]
+            axes = {"y": (self.ax.get_ylim(), self.ax.get_yticks(), values)}
+        else:
+            axes = {"x": (self.ax.get_xlim(), self.ax.get_xticks(),
+                          [v for s in data.series for v in s.x])}
+            if data.kind != "profile":     # the span axis is pinned to 0-1 in both
+                axes["y"] = (self.ax.get_ylim(), self.ax.get_yticks(),
+                             [v for s in data.series for v in s.y])
+        ranges = {}
+        for name, (lim, ticks, values) in axes.items():
+            snapped = _snap_range(lim, ticks, values)
+            if snapped:
+                ranges[name] = snapped
+        return ranges
 
     # -- drawing ----------------------------------------------------------
     def refresh(self) -> None:

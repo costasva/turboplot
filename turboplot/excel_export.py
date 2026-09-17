@@ -62,7 +62,7 @@ def _write_header(ws, row: int, col: int, text: str, width: float | None = None)
 
 
 def write_plot_workbook(path, state: SessionState, spec: PlotSpec, data: PlotData,
-                        chart_title: str) -> None:
+                        chart_title: str, ranges: dict | None = None) -> None:
     wb = Workbook()
     ws_chart = wb.active
     ws_chart.title = "Chart"
@@ -79,6 +79,17 @@ def write_plot_workbook(path, state: SessionState, spec: PlotSpec, data: PlotDat
     chart.legend.position = "r"
     chart.x_axis.delete = False        # openpyxl hides axes by default in some viewers
     chart.y_axis.delete = False
+    # Match the app's axis ranges; without this Excel anchors value axes at zero.
+    for name, axis in (("x", chart.x_axis), ("y", chart.y_axis)):
+        if name == "x" and data.kind == "scalar":
+            continue                   # design IDs are categories, not a scale
+        bounds = (ranges or {}).get(name)
+        if not bounds:
+            continue
+        low, high, unit = bounds
+        axis.scaling.min, axis.scaling.max = low, high
+        if unit:
+            axis.majorUnit = unit
     ws_chart.add_chart(chart, "B2")
     ws_chart.sheet_view.showGridLines = False
 
@@ -155,6 +166,7 @@ def _xy_sheet(ws, state: SessionState, spec: PlotSpec, data: PlotData) -> Scatte
     chart.y_axis.title = y_label
     if profile:
         chart.y_axis.scaling.min, chart.y_axis.scaling.max = 0, 1
+        chart.y_axis.majorUnit = 0.25
 
     multi_op = len(data.ops) > 1
     col = 1

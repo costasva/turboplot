@@ -93,6 +93,13 @@ coloured marker per design iteration and references as flat lines. Curves and
 radial profiles export as XY scatter charts, so span stays on the vertical axis
 in profile plots exactly as on screen.
 
+Axis ranges come across too, including the tick spacing — left to itself Excel
+anchors a value axis at zero, which squashes these quantities into the top of
+the plot area. The exported range is the app's, widened to whole tick marks so
+the axis labels stay on round numbers (so it can be up to one tick wider than
+the app's own view). If the plot is zoomed when you export it, the zoomed view
+is what you get.
+
 `.xlsx` is also offered in the ordinary *Export plot…* dialog alongside
 PNG/PDF/SVG.
 
