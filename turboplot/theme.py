@@ -35,6 +35,12 @@ REF_LINESTYLES = [(0, (6, 3)), (0, (7, 2, 1.5, 2)), (0, (1.5, 2.5))]
 REF_MARKERS = ["s", "^", "D"]
 OP_LINESTYLES = ["-", (0, (5, 2.5)), (0, (6, 2, 1, 2)), (0, (1.5, 2))]
 
+# The same styles named for Excel, so an exported chart looks like the plot.
+DESIGN_DASHES = ["solid", "dash", "sysDot"]
+REF_DASHES = ["dash", "dashDot", "sysDot"]
+REF_SYMBOLS = ["square", "triangle", "diamond"]
+OP_DASHES = ["solid", "dash", "dashDot", "sysDot"]
+
 
 @dataclass(frozen=True)
 class SeriesStyle:
@@ -44,6 +50,12 @@ class SeriesStyle:
     linewidth: float
     markersize: float
     fillstyle: str = "full"
+    dash: str = "solid"          # the same line style, named for Excel
+    symbol: str = "circle"       # the same marker, named for Excel
+
+    @property
+    def rgb(self) -> str:
+        return self.color.lstrip("#").upper()
 
 
 class Theme:
@@ -62,7 +74,8 @@ class Theme:
         # Second time round the palette, line style carries the identity.
         ls = ["-", (0, (5, 2)), (0, (1, 1.6))][min(wrap, 2)]
         return SeriesStyle(color=color, linestyle=ls, marker="o",
-                           linewidth=2.0, markersize=4.6)
+                           linewidth=2.0, markersize=4.6,
+                           dash=DESIGN_DASHES[min(wrap, 2)], symbol="circle")
 
     def design_color(self, color_slot: int) -> str:
         return self.c["series"][color_slot % len(self.c["series"])]
@@ -73,10 +86,15 @@ class Theme:
             linestyle=REF_LINESTYLES[index % len(REF_LINESTYLES)],
             marker=REF_MARKERS[index % len(REF_MARKERS)],
             linewidth=1.9, markersize=5.4, fillstyle="none",
+            dash=REF_DASHES[index % len(REF_DASHES)],
+            symbol=REF_SYMBOLS[index % len(REF_SYMBOLS)],
         )
 
     def op_linestyle(self, index: int):
         return OP_LINESTYLES[index % len(OP_LINESTYLES)]
+
+    def op_dash(self, index: int) -> str:
+        return OP_DASHES[index % len(OP_DASHES)]
 
     # -- matplotlib -------------------------------------------------------
     def apply_rc(self, rcParams) -> None:

@@ -239,7 +239,15 @@ class MainWindow(QMainWindow):
 
         act = QAction("Export plot…", self)
         act.setShortcut(QKeySequence("Ctrl+E"))
+        act.setToolTip("Save this plot as PNG, PDF, SVG or an Excel workbook")
         act.triggered.connect(self._export_current)
+        tb.addAction(act)
+
+        act = QAction("Export to Excel…", self)
+        act.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        act.setToolTip("Write the data behind this plot, and the plot itself as a "
+                       "native Excel chart, to a workbook")
+        act.triggered.connect(self._export_excel)
         tb.addAction(act)
 
         act = QAction("Close all tabs", self)
@@ -337,11 +345,23 @@ class MainWindow(QMainWindow):
             panel.refresh()
 
     def _export_current(self) -> None:
+        self._export(lambda panel: panel.export(), "Export plot")
+
+    def _export_excel(self) -> None:
+        self._export(lambda panel: panel.export_excel(), "Export to Excel")
+
+    def _export(self, run, title: str) -> None:
         panel = self.tabs.currentWidget()
         if panel is None:
-            QMessageBox.information(self, "Export plot", "Open a plot first.")
+            QMessageBox.information(self, title, "Open a plot first.")
             return
-        panel.export()
+        if panel.plot_data().is_empty:
+            QMessageBox.information(self, title,
+                                    "This plot has no series on it \u2014 nothing to export.")
+            return
+        path = run(panel)
+        if path:
+            self.statusBar().showMessage(f"Saved {path}", 8000)
 
     # -- source lists ------------------------------------------------------
     def _refresh_source_lists(self) -> None:

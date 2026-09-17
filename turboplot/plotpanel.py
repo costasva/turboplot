@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (QCheckBox, QFileDialog, QHBoxLayout, QLabel, QMenu,
                              QSizePolicy, QToolButton, QVBoxLayout, QWidget)
 
 from . import db
+from .excel_export import write_plot_workbook
+from .plotmodel import PlotData, Series
 from .state import SessionState
 
 
@@ -123,12 +125,81 @@ class PlotPanel(QWidget):
         self.show_legend = on
         self.refresh()
 
-    def export(self) -> None:
-        name = f"{self.spec.comp_key}_{self.spec.metric_key}.png"
-        path, _ = QFileDialog.getSaveFileName(self, "Export plot", name,
-                                              "PNG image (*.png);;PDF (*.pdf);;SVG (*.svg)")
-        if path:
+    @property
+    def chart_title(self) -> str:
+        if self.spec.kind == "profile" and len(self.selected_ops) == 1:
+            return f"{self.spec.full_title} \u2014 {self.selected_ops[0]}"
+        return self.spec.full_title
+
+    FORMATS = (".png", ".pdf", ".svg", ".xlsx")
+
+    def export(self) -> str | None:
+        base = f"{self.spec.comp_key}_{self.spec.metric_key}"
+        path, chosen = QFileDialog.getSaveFileName(
+            self, "Export plot", base + ".png",
+            "PNG image (*.png);;PDF document (*.pdf);;SVG image (*.svg);;"
+            "Excel workbook with chart (*.xlsx)")
+        if not path:
+            return None
+        if not path.lower().endswith(self.FORMATS):
+            # No extension typed: take it from the filter the user picked.
+            path += next((e for e in self.FORMATS if e in chosen), ".png")
+        return self._write(path)
+
+    def export_excel(self) -> str | None:
+        base = f"{self.spec.comp_key}_{self.spec.metric_key}.xlsx"
+        path, _ = QFileDialog.getSaveFileName(self, "Export data and chart to Excel",
+                                              base, "Excel workbook (*.xlsx)")
+        if not path:
+            return None
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        return self._write(path)
+
+    def _write(self, path: str) -> str:
+        """Both export routes end here; the suffix decides the format."""
+        if path.lower().endswith(".xlsx"):
+            write_plot_workbook(path, self.state, self.spec, self.plot_data(),
+                                self.chart_title)
+        else:
             self.figure.savefig(path, dpi=200)
+        return path
+
+    # -- what is on the plot ----------------------------------------------
+    def plot_data(self) -> PlotData:
+        """Exactly what this tab is showing, as plain numbers.
+
+        The canvas and the Excel export both read this, so an exported
+        workbook always matches the plot in front of the user.
+        """
+        designs, refs = self.state.series_for(self.spec, include_refs=self.show_refs)
+        kind = self.spec.kind
+        if kind == "scalar":
+            values = db.scalar_values(self.state.conn, self.spec.comp_key,
+                                      self.spec.metric_key)
+            return PlotData(
+                kind=kind,
+                series=[Series(src, None, [], [], values[src.source_id])
+                        for src in designs if src.source_id in values],
+                refs=[Series(src, None, [], [], values[src.source_id])
+                      for src in refs if src.source_id in values],
+                ops=[],
+            )
+        series = []
+        for src in designs + refs:
+            if kind == "curve":
+                x, y = db.curve_series(self.state.conn, self.spec.comp_key,
+                                       self.spec.metric_key, src.source_id)
+                if x:
+                    series.append(Series(src, None, x, y))
+            else:
+                for op in self.selected_ops:
+                    x, y = db.profile_series(self.state.conn, self.spec.comp_key,
+                                             self.spec.metric_key, src.source_id, op)
+                    if x:
+                        series.append(Series(src, op, x, y))
+        return PlotData(kind=kind, series=series, refs=[],
+                        ops=list(self.selected_ops) if kind == "profile" else [])
 
     # -- drawing ----------------------------------------------------------
     def refresh(self) -> None:
@@ -145,8 +216,8 @@ class PlotPanel(QWidget):
         self._picks.clear()
         self._hover_index = None
 
-        designs, refs = self.state.series_for(self.spec, include_refs=self.show_refs)
-        if not designs and not refs:
+        data = self.plot_data()
+        if data.is_empty:
             self.ax.text(0.5, 0.5, "No series selected for this plot",
                          ha="center", va="center", color=theme.c["muted"],
                          transform=self.ax.transAxes, fontsize=11)
@@ -159,7 +230,7 @@ class PlotPanel(QWidget):
 
         drawer = {"scalar": self._draw_scalar, "curve": self._draw_curve,
                   "profile": self._draw_profile}[self.spec.kind]
-        drawer(designs, refs)
+        drawer(data)
 
         self.ax.set_title(self.spec.full_title, color=theme.c["text"], pad=10)
         self.ax.grid(True, color=theme.c["grid"], linewidth=0.8)
@@ -195,11 +266,11 @@ class PlotPanel(QWidget):
             leg2.get_frame().set_linewidth(0.8)
 
     # scalar quantity against design ID ----------------------------------
-    def _draw_scalar(self, designs, refs) -> None:
+    def _draw_scalar(self, data: PlotData) -> None:
         theme = self.state.theme
-        values = db.scalar_values(self.state.conn, self.spec.comp_key, self.spec.metric_key)
+        designs = [s.source for s in data.series]
+        ys = [s.value for s in data.series]
         xs = list(range(len(designs)))
-        ys = [values[d.source_id] for d in designs]
 
         if len(xs) > 1:
             self.ax.plot(xs, ys, "-", color=theme.c["axis"], lw=1.4, zorder=2)
@@ -217,10 +288,8 @@ class PlotPanel(QWidget):
         self.ax.set_xlim(-0.6, max(len(xs) - 0.4, 0.6))
 
         handles, labels = [], []
-        for ref in refs:
-            value = values.get(ref.source_id)
-            if value is None:
-                continue
+        for entry in data.refs:
+            ref, value = entry.source, entry.value
             st = self.state.style_for(ref)
             self.ax.axhline(value, color=st.color, linestyle=st.linestyle,
                             linewidth=st.linewidth, zorder=1)
@@ -235,11 +304,10 @@ class PlotPanel(QWidget):
         self._legend(handles, labels, min_entries=1)
 
     # quantity against operating condition --------------------------------
-    def _draw_curve(self, designs, refs) -> None:
+    def _draw_curve(self, data: PlotData) -> None:
         handles, labels = [], []
-        for src in designs + refs:
-            x, y = db.curve_series(self.state.conn, self.spec.comp_key,
-                                   self.spec.metric_key, src.source_id)
+        for entry in data.series:
+            src, x, y = entry.source, entry.x, entry.y
             st = self.state.style_for(src)
             line, = self.ax.plot(x, y, color=st.color, linestyle=st.linestyle,
                                  linewidth=st.linewidth, marker=st.marker,
@@ -256,38 +324,34 @@ class PlotPanel(QWidget):
         self._legend(handles, labels)
 
     # quantity against radius, for selected operating points ---------------
-    def _draw_profile(self, designs, refs) -> None:
+    def _draw_profile(self, data: PlotData) -> None:
         theme = self.state.theme
-        multi_op = len(self.selected_ops) > 1
-        handles, labels = [], []
-        for src in designs + refs:
+        multi_op = len(data.ops) > 1
+        handles, labels, legended = [], [], set()
+        for entry in data.series:
+            src, op, x, y = entry.source, entry.op, entry.x, entry.y
             st = self.state.style_for(src)
-            drew_any = False
-            for op in self.selected_ops:
-                x, y = db.profile_series(self.state.conn, self.spec.comp_key,
-                                         self.spec.metric_key, src.source_id, op)
-                if not x:
-                    continue
-                drew_any = True
-                ls = theme.op_linestyle(self.selected_ops.index(op)) if multi_op else st.linestyle
-                self.ax.plot(x, y, color=st.color, linestyle=ls, linewidth=st.linewidth,
-                             marker=st.marker if not src.is_design else "",
-                             markersize=st.markersize, fillstyle=st.fillstyle,
-                             markeredgewidth=1.3, zorder=4 if src.is_design else 3)
-                label = f"{src.source_id if src.is_design else src.label} — {op}"
-                self._picks.append((label, np.asarray(x, float), np.asarray(y, float), st.color))
-            if drew_any:
+            ls = theme.op_linestyle(data.ops.index(op)) if multi_op else st.linestyle
+            self.ax.plot(x, y, color=st.color, linestyle=ls, linewidth=st.linewidth,
+                         marker=st.marker if not src.is_design else "",
+                         markersize=st.markersize, fillstyle=st.fillstyle,
+                         markeredgewidth=1.3, zorder=4 if src.is_design else 3)
+            self._picks.append((entry.label, np.asarray(x, float),
+                                np.asarray(y, float), st.color))
+            if src.source_id not in legended:       # one legend entry per source
+                legended.add(src.source_id)
                 handles.append(Line2D([], [], color=st.color, linewidth=st.linewidth,
                                       linestyle="-" if multi_op else st.linestyle,
                                       marker="" if src.is_design else st.marker,
                                       fillstyle=st.fillstyle, markersize=st.markersize))
-                labels.append(src.source_id if src.is_design else f"{src.label} ({src.ref_type})")
+                labels.append(src.source_id if src.is_design
+                              else f"{src.label} ({src.ref_type})")
 
         extra = None
         if multi_op:
             extra = [(Line2D([], [], color=theme.c["text_secondary"], linewidth=1.8,
-                             linestyle=theme.op_linestyle(self.selected_ops.index(op))), op)
-                     for op in self.selected_ops]
+                             linestyle=theme.op_linestyle(data.ops.index(op))), op)
+                     for op in data.ops]
         # Radial results are read with span on the vertical axis.
         self.ax.set_xlabel(self.spec.y_label)
         self.ax.set_ylabel(self.spec.x_label)

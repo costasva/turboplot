@@ -71,6 +71,30 @@ machine-level performance.
 6. **Read values off the plot.** Hover any curve for a readout. The matplotlib
    toolbar underneath does zoom/pan/save; *Export plot…* (Ctrl+E) writes
    PNG/PDF/SVG.
+7. **Hand the plot to someone in Excel.** *Export to Excel…* (Ctrl+Shift+E)
+   writes a workbook holding the numbers behind the plot **and** the plot
+   itself as a native Excel chart — editable, re-styleable, and re-plottable by
+   the recipient without this app. See below.
+
+## Excel export
+
+*Export to Excel…* exports the plot **as it is on screen** — the same series,
+the same operating points, the same colours, dash patterns and markers. The
+workbook has three sheets:
+
+| Sheet | Contents |
+|---|---|
+| `Chart` | The chart, as a native Excel chart object. Nothing is a picture. |
+| `Data` | The numbers it is drawn from. Scalar plots: one row per design iteration with a column per reference level. Curves and profiles: a column pair (x, y) per series, since each series has its own abscissa. |
+| `Info` | What the plot is, which operating points were shown, when it was exported, and a table of every series with its hardware, date, colour and notes. |
+
+Scalar plots export as an Excel line chart over design-ID categories, with one
+coloured marker per design iteration and references as flat lines. Curves and
+radial profiles export as XY scatter charts, so span stays on the vertical axis
+in profile plots exactly as on screen.
+
+`.xlsx` is also offered in the ordinary *Export plot…* dialog alongside
+PNG/PDF/SVG.
 
 ## How it is put together
 
@@ -79,7 +103,9 @@ machine-level performance.
 | `turboplot/db.py` | Schema and every query the UI makes. No numpy in the UI layer. |
 | `turboplot/datagen.py` | Builds the demo database: the invented physics lives here. |
 | `turboplot/state.py` | What is loaded, what is visible globally, per-plot overrides; signals that keep every tab in step. |
-| `turboplot/plotpanel.py` | One plot tab: figure, the three draw routines, hover readout. |
+| `turboplot/plotmodel.py` | A plot described as plain data — what the canvas draws and what the Excel export writes, so the two cannot drift. |
+| `turboplot/plotpanel.py` | One plot tab: figure, the three draw routines, hover readout, export. |
+| `turboplot/excel_export.py` | Builds the workbook: data sheets plus a native Excel chart. |
 | `turboplot/mainwindow.py` | Tree, loaded-data lists, tabs, per-plot series dock. |
 | `turboplot/theme.py` | Series colour/style rules and light/dark theming. |
 | `turboplot/compat.py` | Clears the macOS hidden flag uv sets on the bundled Qt plugins. |

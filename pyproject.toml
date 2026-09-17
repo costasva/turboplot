@@ -7,6 +7,7 @@ dependencies = [
     "PyQt6>=6.7",
     "matplotlib>=3.9",
     "numpy>=2.0",
+    "openpyxl>=3.1",
 ]
 
 [tool.uv]
