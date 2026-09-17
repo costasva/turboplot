@@ -1,0 +1,13 @@
+[project]
+name = "turboplot-mockup"
+version = "0.1.0"
+description = "Design-iteration results browser / plotting mockup for compressor & turbine aero-mechanical results"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "PyQt6>=6.7",
+    "matplotlib>=3.9",
+    "numpy>=2.0",
+]
+
+[tool.uv]
+package = false

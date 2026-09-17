@@ -1,0 +1,28 @@
+I am iterating on the design of a plotting application for a gas turbine OEM. A main concept in the app is a desin iteration which is a particular version of the hardware being designed. There is an ID associated with the design iteration. For each design iteration we run multiple analyses and the results will be stored in the app. The results have a particular structure:
+
+- The hardware (compressor, turbine, etc.) has several subcomponents like rotor #1, stator #1, rotor #2, etc.
+- We have performance metrics for each component but also for the whole machine, like efficiency, pressure ratio, max stress, max forced response strain, etc.
+- Some of these analyses have been run at different operating conditions so we could have curves of pressure ratio vs. flow rate or efficiency vs. flow rate.
+- We have some results that show variation across some machine location. For example we could have the pressure ratio at the exit of rotor #1 as a function of radius. There would be multiple such curves at the different operating points that have been simulated.
+
+Other than results for specific design iterations we would also have reference data:
+
+- Results for a different compressor that is maybe similar to this one and we would want to compare with this one.
+- Test results for a compressoriterating
+
+These reference data will have some identifying information such as the name of the compressor, etc. In general there will be just a few reference data where we could have tens of design iterations with many different types or results for each. In the application I am envisioning a SQL database backend to store all the data.
+
+The application would need to support the following plotting functionality:
+
+- Plot some scalar quantity against design ID
+- For quantities where we have multiple operating points, show one such curve for each design iteration. For example we would want a plot that shows rotor #1 efficiency vs. flow rate for each design iteration.
+- For quantities that vary with position in the machine (like the pressure ratio vs. radius mentioned above), plot selected design IDs and operating conditions in the same plot. So you may show pressure ratio vs radius for design ID 1, 2, 3 for the operating point that results in peak efficiency.
+- In some of these plots we may want to show the reference result. For example for a pressure ratio vs. flow rate plot we may want to also show the pressure ratio vs. flow rate results from a test or a simulation result from a different compressor. For forced response strain vs. design ID we may also want to show the measured strain for a test.
+- It should be easy to add/remove design IDs from the plots. The default behavior would be that when data for a new design ID are loaded its results are added to all the plots that already exist.
+
+The app should provide a list of all design IDs loaded and also a list of all reference data loaded. There should also be a tree shown on the left with all the plots that are available. There is some hierarchical structure there:
+
+- There are specific parts of the machine like rotor 1, stator 1, rotor 2, etc.
+- For each part we could have multiple curves like efficiency vs. flow, pressure ratio vs flow, stress, etc.
+
+I would like you to create a mockup of that app so I can show to users. You can make up the data to show functionality above. I would like to be able to demonstrate what the user will see and how they will interact with the application. This does not need to be a full blown app, just a demonstator. I am leaning towards doing this with PyQt but I am open to other suggestions. If some things are unclear, please ask questions instead of assuming/guessing what I want. If you are doing with Python use uv to manage the environment.
